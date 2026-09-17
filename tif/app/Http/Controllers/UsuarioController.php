@@ -26,6 +26,7 @@ class UsuarioController extends Controller
         $dados['senha'] = md5($dados['senha']);
         Usuario::create($dados);
 
-        return response()->json(['erro' => 'n', 'mensagem' => 'Usuário cadastrado com sucesso'], 201);
+        return response()->json(['erro' => 'n', 'mensagem' => 'UsuÃ¡rio cadastrado com sucesso'], 201);
     }
 }
+

@@ -28,3 +28,4 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/listar_equipamentos_disponiveis', [EquipamentosController::class, 'listar_equipamentos_disponiveis']);
     });
 });
+
