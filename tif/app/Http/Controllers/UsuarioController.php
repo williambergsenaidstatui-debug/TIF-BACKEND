@@ -9,6 +9,11 @@ use Illuminate\Http\Request;
 
 class UsuarioController extends Controller
 {
+    public function listar_usuarios(): JsonResponse
+    {
+        return response()->json(Usuario::orderBy('nome')->get());
+    }
+
     public function cadastro_usuario_html(): View
     {
         return view('cadastro_usuario');
@@ -29,4 +34,3 @@ class UsuarioController extends Controller
         return response()->json(['erro' => 'n', 'mensagem' => 'UsuÃ¡rio cadastrado com sucesso'], 201);
     }
 }
-

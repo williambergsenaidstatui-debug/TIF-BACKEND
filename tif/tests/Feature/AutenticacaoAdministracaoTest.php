@@ -14,6 +14,11 @@ class AutenticacaoAdministracaoTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_api_without_accept_header_still_returns_unauthorized_json(): void
+    {
+        $this->get('/api/user')->assertUnauthorized()->assertJsonPath('message', 'Unauthenticated.');
+    }
+
     public function test_login_emits_a_working_sanctum_token_and_hides_password(): void
     {
         $usuario = Usuario::factory()->create();
@@ -72,6 +77,7 @@ class AutenticacaoAdministracaoTest extends TestCase
     public static function rotasAdministrativas(): array
     {
         return [
+            ['GET', '/api/listar_usuarios'],
             ['POST', '/api/cadastro_usuario'],
             ['POST', '/api/cadastro_equipamento'],
             ['GET', '/api/listar_equipamentos'],
@@ -99,6 +105,8 @@ class AutenticacaoAdministracaoTest extends TestCase
             'is_admin' => true,
         ];
         $this->api('POST', '/api/cadastro_usuario', $dados, $token)->assertCreated();
+        $this->api('GET', '/api/listar_usuarios', [], $token)
+            ->assertOk()->assertJsonCount(2)->assertJsonMissingPath('0.senha')->assertJsonMissingPath('1.senha');
         $this->assertDatabaseHas('usuario', ['email' => $dados['email'], 'is_admin' => false, 'senha' => md5('senha-teste')]);
         $this->api('POST', '/api/cadastro_usuario', $dados, $token)->assertUnprocessable()->assertJsonValidationErrors('email');
     }

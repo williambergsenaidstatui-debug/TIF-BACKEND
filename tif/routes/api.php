@@ -15,6 +15,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/meus_equipamentos', [EquipamentosController::class, 'meus_equipamentos']);
 
     Route::middleware(EnsureAdministrador::class)->group(function () {
+        Route::get('/listar_usuarios', [UsuarioController::class, 'listar_usuarios']);
         Route::post('/cadastro_usuario', [UsuarioController::class, 'cadastro_usuario']);
         Route::post('/cadastro_equipamento', [EquipamentosController::class, 'cadastro_equipamento']);
         Route::get('/listar_equipamentos', [EquipamentosController::class, 'listar_equipamentos']);
@@ -28,4 +29,3 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/listar_equipamentos_disponiveis', [EquipamentosController::class, 'listar_equipamentos_disponiveis']);
     });
 });
-

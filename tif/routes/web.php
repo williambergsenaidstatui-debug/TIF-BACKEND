@@ -1,12 +1,17 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\UsuarioController;
-use App\Http\Controllers\LoginController;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
-Route::get('/', function () {
-    return view('welcome');
-});
-Route::get('/login', [LoginController::class, 'login_html']);
+$frontend = function (): BinaryFileResponse {
+    $frontend = public_path('frontend/index.html');
 
-Route::get('/cadastro_usuario', [UsuarioController::class, 'cadastro_usuario_html']);
+    abort_unless(is_file($frontend), 503, 'Compile o frontend com npm run build:web em projeto-final/projeto-final.');
+
+    return response()->file($frontend, ['Cache-Control' => 'no-cache']);
+};
+
+Route::get('/login', $frontend)->name('login');
+Route::get('/{pagina?}', $frontend)
+    ->where('pagina', 'dashboard|usuarios|computadores|cadastro_usuario')
+    ->name('frontend');
