@@ -60,7 +60,9 @@ let expired = false;
         requests.push({ path: url.pathname, method: request.method, body: request.postData });
         const body = request.postData ? JSON.parse(request.postData) : {};
         const route = url.pathname.slice(4);
-        if (route === '/login') {
+        if (route === '/recuperar_senha') { content = { mensagem: 'Se o e-mail estiver cadastrado, você receberá um link de recuperação.' }; }
+else if (route === '/redefinir_senha') { assert.equal(body.password, body.password_confirmation); content = { mensagem: 'Senha redefinida. Entre novamente.' }; }
+else if (route === '/login') {
           account = users.find((user) => user.email === body.email);
           if (!account || body.senha !== 'senha-teste') { code = 401; content = { mensagem: 'Email ou senha inválidos' }; }
           else { expired = false; content = { token: 'test-token', usuario: account }; }
@@ -68,18 +70,25 @@ let expired = false;
           code = 401; content = { message: 'Unauthenticated.' };
         } else if (route === '/logout') { content = {}; account = null; }
         else if (route === '/user') content = account;
-        else if (route === '/meus_equipamentos') content = equipment.filter((item) => item.id_usuario === account.id);
+        else if (route === '/emprestimos') content = { data: [], total: 0, last_page: 1 };
+else if (route === '/alertas') content = { atrasados: [], total_atrasados: 0, manutencao: [], total_manutencao: 0 };
+else if (route === '/minha_senha') { assert.equal(body.password, body.password_confirmation); content = {}; account = null; }
+else if (route === '/meus_equipamentos') content = equipment.filter((item) => item.id_usuario === account.id);
         else if (!account.is_admin) { code = 403; content = {}; }
         else if (route === '/listar_usuarios') content = users;
+else if (route.startsWith('/usuarios/') && request.method === 'PUT') { Object.assign(users.find(user => user.id === Number(route.split('/').pop())), body); content = {}; }
+else if (route.startsWith('/usuarios/') && request.method === 'DELETE') { users.splice(users.findIndex(user => user.id === Number(route.split('/').pop())), 1); content = {}; }
+else if (/^\/equipamentos\/\d+\/leituras$/.test(route)) content = { data: [], total: 0, last_page: 1 };
+else if (/^\/equipamentos\/\d+\/credencial$/.test(route)) content = { token: request.method === 'POST' ? 'a'.repeat(64) : undefined, mensagem: 'Credencial atualizada.' };
         else if (route === '/listar_equipamentos') content = equipment;
         else if (route === '/vincular_equipamento') {
           assert.equal(request.method, 'POST');
-          assert.deepEqual(Object.keys(body).sort(), ['id_equipamento', 'id_usuario']);
+          assert.deepEqual(Object.keys(body).sort(), ['id_equipamento', 'id_usuario', 'previsto_para', ...(body.substituir_usuario_id ? ['substituir_usuario_id'] : [])].sort());
           assert.ok(users.some(user => user.id === body.id_usuario));
-          equipment.find(item => item.id === body.id_equipamento).id_usuario = body.id_usuario; content = {};
+          Object.assign(equipment.find(item => item.id === body.id_equipamento), { id_usuario: body.id_usuario, status: 'Em uso' }); content = {};
         } else if (route === '/desvincular_equipamento') {
           assert.equal(request.method, 'POST');
-          equipment.find(item => item.id === body.id_equipamento).id_usuario = null; content = {};
+          Object.assign(equipment.find(item => item.id === body.id_equipamento), { id_usuario: null, status: 'Disponível' }); content = {};
         }
         else if (route === '/cadastro_usuario') {
           assert.deepEqual(Object.keys(body).sort(), ['cpf', 'data_nascimento', 'email', 'nome', 'senha'].sort());
@@ -93,7 +102,7 @@ let expired = false;
         else throw new Error('Unexpected API ' + route);
         content = Buffer.from(JSON.stringify(content));
       } else {
-        const file = url.pathname === '/' ? 'index.html' : decodeURIComponent(url.pathname.replace(/^\/frontend\//, ''));
+        const file = ['/', '/redefinir-senha'].includes(url.pathname) ? 'index.html' : decodeURIComponent(url.pathname.replace(/^\/frontend\//, ''));
         const resolved = path.resolve(root, file);
         assert.ok(resolved.startsWith(root + path.sep));
         content = fs.readFileSync(resolved);
@@ -126,7 +135,9 @@ let expired = false;
   }
   const hasText = (text) => `document.body.innerText.includes(${JSON.stringify(text)})`;
   async function click(text) {
-    await evaluate(`(() => { const item = [...document.querySelectorAll('[role="button"]')].find(el => el.checkVisibility() && (el.innerText.trim() === ${JSON.stringify(text)} || [...el.children].some(child => child.innerText.trim() === ${JSON.stringify(text)}))); if (!item) throw new Error('Button missing: ' + ${JSON.stringify(text)}); item.click(); })()`);
+    const expression = "[...document.querySelectorAll('[role=\"button\"]')].find(el => el.checkVisibility() && (el.innerText.trim() === " + JSON.stringify(text) + " || [...el.children].some(child => child.innerText.trim() === " + JSON.stringify(text) + ")))";
+    await wait("Boolean(" + expression + ")");
+    await evaluate("(" + expression + ").click()");
   }
   async function fill(label, value) {
     await evaluate(`(() => { const item = [...document.querySelectorAll('input[aria-label="' + ${JSON.stringify(label)} + '"]')].find(el => el.checkVisibility()); if (!item) throw new Error('Input missing'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(item, ${JSON.stringify(value)}); item.dispatchEvent(new Event('input', { bubbles: true })); })()`);
@@ -137,7 +148,7 @@ let expired = false;
     await wait(hasText('DASHBOARD'));
     await wait(hasText(linked ? 'PC-001' : 'Nenhum equipamento vinculado.'));
   }
-  await send('Page.navigate', { url: 'http://verify-test.local/' });
+  await send('Page.navigate', { url: 'https://verify-test.local/' });
   await wait('document.querySelector("[data-testid=splash-screen]") !== null');
   await wait(hasText('Acesse sua conta'));
   assert.equal(await evaluate('document.querySelector("[data-testid=splash-screen]") === null'), true);
@@ -145,7 +156,7 @@ let expired = false;
   await wait(hasText('Email ou senha inválidos'));
   await login('admin@example.com');
   await click('Usuários'); await wait(hasText('Novo usuário')); await click('Novo usuário');
-  for (const [label, value] of [['Nome completo', 'Novo Teste'], ['E-mail', 'admin@example.com'], ['CPF (11 dígitos)', '12345678903'], ['Data de nascimento (AAAA-MM-DD)', '2001-01-01'], ['Senha (mínimo de 6 caracteres)', 'senha-teste']]) await fill(label, value);
+  for (const [label, value] of [['Nome completo', 'Novo Teste'], ['E-mail', 'admin@example.com'], ['CPF (11 dígitos)', '12345678903'], ['Data de nascimento (AAAA-MM-DD)', '2001-01-01'], ['Senha (12 a 72 caracteres, letras e números)', 'senha-teste']]) await fill(label, value);
   await click('Salvar'); await wait(hasText('E-mail já cadastrado.'));
   await fill('E-mail', 'novo@example.com'); await click('Salvar'); await wait(hasText('Usuário cadastrado com sucesso.'));
   assert.ok(users.some((user) => user.nome === 'Novo Teste'));
@@ -153,22 +164,20 @@ let expired = false;
   for (const [label, value] of [['Número de série', 'PC-002'], ['Marca', 'Lenovo'], ['Modelo', 'ThinkPad'], ['Data de aquisição (AAAA-MM-DD)', '2026-09-01']]) await fill(label, value);
   await click('Salvar'); await wait(hasText('Equipamento cadastrado.')); await wait(hasText('PC-002'));
   await click('Vínculos'); await wait(hasText('PC-001')); await click('Novo Vínculo');
-  await click('Cadastrar'); await wait(hasText('Selecione um usuário e um equipamento.'));
-  async function selectOption(index, name) {
-    await evaluate(`document.querySelectorAll('[aria-label="Selecionar op\u00e7\u00e3o"]')[${index}].click()`);
-    await click(name);
-  }
-  await selectOption(0, 'Usuario Teste'); await selectOption(1, 'ThinkPad (PC-002)');
-  await click('Cadastrar'); await wait(hasText('Vínculo cadastrado com sucesso.'));
+  await click('Salvar'); await wait(hasText('Preencha todos os campos.'));
+  await click('2 · Usuario Teste'); await click('2 · PC-002 · ThinkPad');
+  await fill('Devolução prevista (AAAA-MM-DD)', '2026-12-31');
+  await click('Salvar'); await wait(hasText('Vínculo cadastrado com sucesso.'));
   assert.equal(equipment.find(item => item.id === 2).id_usuario, 2);
-  await click('A'); await selectOption(0, 'Admin Teste'); await click('Salvar responsável');
-  await wait(hasText('Responsável atualizado com sucesso.'));
+  await click('Alterar responsável'); await click('1 · Admin Teste');
+  await fill('Devolução prevista (AAAA-MM-DD)', '2026-12-31');
+  await click('Salvar'); await wait(hasText('Responsável atualizado com sucesso.'));
   assert.equal(equipment.find(item => item.id === 1).id_usuario, 1);
-  await click('V'); await wait(hasText('Detalhes do vínculo')); await click('Fechar');
-  await click('D'); await click('Cancelar'); assert.equal(equipment[0].id_usuario, 1);
-  await click('D'); await click('Confirmar desvínculo'); await wait(hasText('Vínculo removido com sucesso.'));
+  await click('Visualizar vínculo'); await wait(hasText('Detalhes do vínculo')); await click('Fechar');
+  await click('Registrar devolução'); await click('Cancelar'); assert.equal(equipment[0].id_usuario, 1);
+  await click('Registrar devolução'); await click('Confirmar devolução'); await wait(hasText('Devolução registrada.'));
   assert.equal(equipment[0].id_usuario, null);
-  await click('D'); await click('Confirmar desv\u00ednculo'); await wait(hasText('Nenhum v\u00ednculo encontrado.'));
+  await click('Registrar devolução'); await click('Confirmar devolução'); await wait(hasText('Nenhum vínculo ativo.'));
   assert.equal(equipment[1].id_usuario, null);
   await click('Computadores'); await wait(hasText('PC-001'));
   await click('Editar'); await wait(hasText('Editar equipamento')); await fill('Modelo', 'Modelo alterado'); await click('Salvar'); await wait(hasText('Modelo alterado'));
@@ -176,6 +185,19 @@ let expired = false;
   assert.equal(equipment.length, 2);
   await click('Excluir'); await click('Confirmar exclusão'); await wait(hasText('Equipamento excluído.'));
   assert.equal(equipment.length, 1);
+  await click('Histórico'); await wait(hasText('HISTÓRICO DE EMPRÉSTIMOS')); await wait(hasText('0 registros'));
+  await click('Alertas'); await wait(hasText('Empréstimos atrasados: 0'));
+  await click('Sensores HTTP'); await wait(hasText('SENSORES HTTP'));
+  await click('PC-002 · ThinkPad'); await wait(hasText('Gerar ou trocar credencial'));
+  await click('Gerar ou trocar credencial'); await click('Confirmar operação'); await wait(hasText('Copie agora.'));
+  assert.equal(await evaluate('document.querySelector("textarea").value'), 'a'.repeat(64));
+  await click('Fechar');
+  await click('Usuários'); await wait(hasText('Novo Teste'));
+  await fill('Buscar usuário', 'Novo Teste'); await click('Editar usuário');
+  await fill('Nome completo', 'Nome atualizado'); await click('Salvar');
+  await fill('Buscar usuário', 'Nome atualizado'); await wait(hasText('Nome atualizado'));
+  await click('Excluir usuário'); await click('Confirmar exclusão de usuário');
+  await wait(hasText('Usuário excluído. Histórico preservado.'));
   await send('Page.reload'); await wait(hasText('DASHBOARD')); await wait(hasText('Nenhum equipamento vinculado.'));
   await click('Sair'); await login('user@example.com', false);
   const requestStart = requests.length;
@@ -188,6 +210,16 @@ let expired = false;
   expired = true;
   await click('Atualizar'); await wait(hasText('Acesse sua conta'));
   assert.equal(await evaluate('sessionStorage.getItem("verify-system-session")'), null);
+  await click('Esqueci minha senha'); await wait(hasText('Recuperar acesso'));
+  await fill('E-mail', 'user@example.com'); await click('Enviar recuperação');
+  await wait(hasText('Se o e-mail estiver cadastrado'));
+  await click('Voltar ao login'); await login('user@example.com', false);
+  await click('Configurações'); await wait(hasText('Alterar senha ·'));
+  await fill('Senha atual', 'senha-teste'); await fill('Nova senha', 'Nova-senha-1234'); await fill('Confirmar nova senha', 'Nova-senha-1234');
+  await click('Alterar senha'); await wait(hasText('Acesse sua conta'));
+  await send('Page.navigate', { url: 'https://verify-test.local/redefinir-senha?token=teste&email=user%40example.com' });
+  await wait(hasText('Redefinir senha')); await fill('Nova senha', 'Nova-senha-1234'); await fill('Confirmar nova senha', 'Nova-senha-1234');
+  await click('Redefinir senha'); await wait(hasText('Senha redefinida. Entre novamente.'));
   assert.deepEqual(errors, []);
   console.log(JSON.stringify({ result: 'passed', checks: ['invalid login', 'admin login', 'user validation and creation', 'equipment creation/edit/delete', 'cancel deletion', 'link creation and validation', 'change owner', 'link details', 'cancel and confirm unlink', 'session restore', 'logout', 'user restrictions', 'mobile layout', 'expired session'], requests: requests.length }));
   await send('Browser.close', {}, null);

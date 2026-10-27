@@ -4,12 +4,13 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
-class Sensor extends Model
+class SensorLeitura extends Model
 {
     // Vincula a Model à tabela exata criada na sua migration
     protected $table = 'leituras_sensor';
 
     protected $fillable = [
+        'id_equipamento',
         'sensor_nome',
         'valor_digital',
         'valor_analogico',

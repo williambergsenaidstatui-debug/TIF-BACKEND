@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\EquipamentosModel;
 use App\Models\Usuario;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Testing\TestResponse;
 use Laravel\Sanctum\PersonalAccessToken;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -99,7 +100,7 @@ class AutenticacaoAdministracaoTest extends TestCase
         $dados = [
             'nome' => 'Usuario',
             'email' => 'usuario@example.com',
-            'senha' => 'senha-teste',
+            'senha' => 'Senha-segura-123',
             'cpf' => '12345678901',
             'data_nascimento' => '2000-01-01',
             'is_admin' => true,
@@ -107,7 +108,8 @@ class AutenticacaoAdministracaoTest extends TestCase
         $this->api('POST', '/api/cadastro_usuario', $dados, $token)->assertCreated();
         $this->api('GET', '/api/listar_usuarios', [], $token)
             ->assertOk()->assertJsonCount(2)->assertJsonMissingPath('0.senha')->assertJsonMissingPath('1.senha');
-        $this->assertDatabaseHas('usuario', ['email' => $dados['email'], 'is_admin' => false, 'senha' => md5('senha-teste')]);
+        $this->assertDatabaseHas('usuario', ['email' => $dados['email'], 'is_admin' => false]);
+        $this->assertTrue(Hash::check($dados['senha'], Usuario::where('email', $dados['email'])->firstOrFail()->senha));
         $this->api('POST', '/api/cadastro_usuario', $dados, $token)->assertUnprocessable()->assertJsonValidationErrors('email');
     }
 
@@ -122,14 +124,14 @@ class AutenticacaoAdministracaoTest extends TestCase
         $this->api('PUT', '/api/atualizar_equipamento/'.$equipamento->id, [...$dados, 'modelo' => 'Novo'], $token)->assertOk();
         $this->api('GET', '/api/buscar_equipamento/'.$equipamento->id, [], $token)->assertOk()->assertJsonPath('modelo', 'Novo');
         $this->api('GET', '/api/buscar_equipamento_por_numero_serie/'.$equipamento->numero_serie, [], $token)->assertOk();
-        $this->api('POST', '/api/vincular_equipamento', ['id_usuario' => $usuario->id, 'id_equipamento' => $equipamento->id], $token)->assertOk();
+        $this->api('POST', '/api/vincular_equipamento', ['id_usuario' => $usuario->id, 'id_equipamento' => $equipamento->id, 'previsto_para' => today()->addWeek()->toDateString()], $token)->assertOk();
         $this->assertDatabaseHas('equipamentos', ['id' => $equipamento->id, 'id_usuario' => $usuario->id]);
         $this->api('GET', '/api/listar_equipamentos_disponiveis', [], $token)->assertOk()->assertJsonCount(0);
         $this->api('GET', '/api/listar_equipamentos_por_usuario/'.$usuario->id, [], $token)->assertOk()->assertJsonCount(1);
         $this->api('POST', '/api/desvincular_equipamento', ['id_equipamento' => $equipamento->id], $token)->assertOk();
         $this->assertDatabaseHas('equipamentos', ['id' => $equipamento->id, 'id_usuario' => null]);
         $this->api('DELETE', '/api/excluir_equipamento/'.$equipamento->id, [], $token)->assertOk();
-        $this->assertDatabaseCount('equipamentos', 0);
+        $this->assertSoftDeleted('equipamentos', ['id' => $equipamento->id]);
     }
 
     public function test_invalid_links_are_rejected_and_user_only_sees_own_equipment(): void
@@ -145,8 +147,8 @@ class AutenticacaoAdministracaoTest extends TestCase
         $adminToken = $admin->createToken('admin')->plainTextToken;
         $this->api('POST', '/api/vincular_equipamento', ['id_usuario' => 999999, 'id_equipamento' => $proprio->id], $adminToken)->assertUnprocessable();
         $this->assertDatabaseHas('equipamentos', ['id' => $proprio->id, 'id_usuario' => $usuario->id]);
-        $usuario->delete();
-        $this->assertDatabaseHas('equipamentos', ['id' => $proprio->id, 'id_usuario' => null]);
+        $this->api('DELETE', '/api/usuarios/'.$usuario->id, [], $adminToken)->assertUnprocessable();
+        $this->assertDatabaseHas('equipamentos', ['id' => $proprio->id, 'id_usuario' => $usuario->id]);
     }
 
     public function test_administrator_can_be_created_from_terminal(): void
@@ -154,7 +156,7 @@ class AutenticacaoAdministracaoTest extends TestCase
         $this->artisan('admin:criar')
             ->expectsQuestion('Nome', 'Administrador')
             ->expectsQuestion('Email', 'admin@example.com')
-            ->expectsQuestion('Senha (mínimo de 6 caracteres)', 'senha-teste')
+            ->expectsQuestion('Senha (12 a 72 caracteres, letras e números)', 'Senha-segura-123')
             ->expectsQuestion('Data de nascimento (AAAA-MM-DD)', '2000-01-01')
             ->expectsQuestion('CPF (11 dígitos)', '12345678901')
             ->expectsOutput('Administrador criado com sucesso.')

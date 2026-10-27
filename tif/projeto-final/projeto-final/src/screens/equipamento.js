@@ -68,11 +68,11 @@ export default function Equipamento({ navigation }) {
         <Button secondary onPress={() => { setError(''); setDeleting(item); }}>Excluir</Button>
       </View>}
     </View>} />}
-    {editing && isAdmin && <FormModal title={editing.id ? 'Editar equipamento' : 'Novo equipamento'} fields={fields} initial={editing} onClose={() => setEditing(null)} onSave={save} />}
+    {editing && isAdmin && <FormModal title={editing.id ? 'Editar equipamento' : 'Novo equipamento'} fields={fields.map(field => field.name === 'status' ? { ...field, options: editing.id_usuario != null ? ['Em uso'] : ['Disponível', 'Manutenção'] } : field)} initial={editing} onClose={() => setEditing(null)} onSave={save} />}
     {deleting && isAdmin && <Modal visible transparent animationType="fade" onRequestClose={() => !busy && setDeleting(null)}>
       <View style={styles.overlay}><View style={styles.modal}>
         <Text style={styles.modalTitle}>Excluir {deleting.numero_serie}?</Text>
-        <Text style={{ marginBottom: 20 }}>O equipamento será removido permanentemente.</Text>
+        <Text style={{ marginBottom: 20 }}>O equipamento será retirado da lista. O histórico será preservado. Registre a devolução antes de excluir.</Text>
         {!!error && <Text accessibilityRole="alert" style={{ color: '#a00912', marginBottom: 16 }}>{error}</Text>}
         <View style={styles.toolbar}>
           <Button secondary disabled={busy} onPress={() => setDeleting(null)}>Cancelar</Button>

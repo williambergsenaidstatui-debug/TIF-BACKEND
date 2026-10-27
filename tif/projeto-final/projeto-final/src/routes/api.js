@@ -3,7 +3,7 @@ import { Platform } from 'react-native';
 export const API_URL = (process.env.EXPO_PUBLIC_API_URL ||
   (Platform.OS === 'web'
     ? (__DEV__ ? 'http://tif.test/api' : `${window.location.origin}/api`)
-    : 'http://10.0.2.2/api')).replace(/\/$/, '');
+    : (__DEV__ ? 'http://10.0.2.2/api' : ''))).replace(/\/$/, '');
 
 let token = null;
 let onUnauthorized = () => {};
@@ -14,6 +14,10 @@ export function configureSession(value, handler = () => {}) {
 }
 
 export async function api(path, { method = 'GET', body } = {}) {
+  const localWeb = Platform.OS === 'web' && /^(localhost|127\.0\.0\.1|[a-z0-9.-]+\.test)$/.test(window.location.hostname) && API_URL === window.location.origin + '/api';
+  if (!API_URL || !/^https?:\/\/[^\s]+\/api$/.test(API_URL) || (!__DEV__ && !localWeb && !API_URL.startsWith('https://'))) {
+    throw new Error('Configure EXPO_PUBLIC_API_URL com a URL HTTPS do servidor, terminando em /api.');
+  }
   const requestToken = token;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15000);

@@ -13,5 +13,5 @@ $frontend = function (): BinaryFileResponse {
 
 Route::get('/login', $frontend)->name('login');
 Route::get('/{pagina?}', $frontend)
-    ->where('pagina', 'dashboard|usuarios|computadores|cadastro_usuario')
+    ->where('pagina', 'dashboard|usuarios|computadores|cadastro_usuario|redefinir-senha|historico|alertas|configuracoes')
     ->name('frontend');

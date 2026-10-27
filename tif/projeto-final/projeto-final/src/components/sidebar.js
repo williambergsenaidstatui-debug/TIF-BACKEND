@@ -9,6 +9,9 @@ export default function Sidebar({ navigation, active }) {
   const [error, setError] = useState('');
   const items = [['Dashboard', 'Dashboard'], ...(isAdmin ? [['Usuarios', 'Usuários'], ['Vinculos', 'Vínculos']] : []), ['Equipamento', isAdmin ? 'Computadores' : 'Meus equipamentos']];
 
+  items.push(['Historico', 'Histórico'], ['Alertas', 'Alertas'], ['Configuracao', 'Configurações']);
+  if (isAdmin) items.push(['Sensores', 'Sensores HTTP']);
+
   async function sair() {
     setBusy(true);
     setError('');

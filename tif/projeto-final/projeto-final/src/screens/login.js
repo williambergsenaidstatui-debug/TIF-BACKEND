@@ -16,7 +16,7 @@ import Svg, { Line, Polygon, Rect } from 'react-native-svg';
 
 const logo = require('../../assets/logo-projeto-final-mobile.png');
 
-export default function Login() {
+export default function Login({ navigation }) {
   const { width } = useWindowDimensions();
   const isMobile = width < 760;
   const { login } = useAuth();
@@ -137,6 +137,9 @@ export default function Login() {
 
             <Pressable accessibilityRole="button" disabled={busy} onPress={entrar} style={[styles.button, busy && { opacity: 0.5 }]}>
               <Text style={styles.buttonText}>{busy ? 'Entrando...' : 'Entrar'}</Text>
+            </Pressable>
+            <Pressable accessibilityRole="button" disabled={busy} onPress={() => navigation.navigate('RecuperarSenha')} style={{ paddingVertical: 20 }}>
+              <Text style={{ color: '#fff' }}>Esqueci minha senha</Text>
             </Pressable>
           </View>
         </View>

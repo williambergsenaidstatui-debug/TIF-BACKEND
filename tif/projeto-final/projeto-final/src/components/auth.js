@@ -1,25 +1,12 @@
 import { createContext, useContext, useEffect, useState } from 'react';
-import { Platform } from 'react-native';
 import { api, configureSession } from '../routes/api';
+import { readSession, saveSession } from './session';
 
 const AuthContext = createContext(null);
-const storageKey = 'verify-system-session';
-
-function readSession() {
-  try {
-    return Platform.OS === 'web' ? window.sessionStorage.getItem(storageKey) : null;
-  } catch {
-    return null;
-  }
-}
-
-function saveSession(value) {
-  try {
-    if (Platform.OS === 'web') {
-      if (value) window.sessionStorage.setItem(storageKey, value);
-      else window.sessionStorage.removeItem(storageKey);
-    }
-  } catch { /* A sessão continua em memória quando o navegador bloqueia o armazenamento. */ }
+let storageQueue = Promise.resolve();
+function persist(value) {
+  storageQueue = storageQueue.catch(() => {}).then(() => saveSession(value));
+  return storageQueue;
 }
 
 export function AuthProvider({ children }) {
@@ -28,37 +15,44 @@ export function AuthProvider({ children }) {
 
   function clearSession() {
     configureSession(null);
-    saveSession(null);
     setUsuario(null);
+    return persist(null).catch(() => {});
   }
 
   useEffect(() => {
-    const saved = readSession();
-    if (!saved) {
-      setLoading(false);
-      return;
-    }
-    configureSession(saved, clearSession);
-    api('/user').then(setUsuario).catch(clearSession).finally(() => setLoading(false));
+    let mounted = true;
+    (async () => {
+      try {
+        const saved = await readSession();
+        if (!saved || !mounted) return;
+        configureSession(saved, clearSession);
+        const user = await api('/user');
+        if (mounted) setUsuario(user);
+      } catch { await clearSession(); }
+      finally { if (mounted) setLoading(false); }
+    })();
+    return () => { mounted = false; };
   }, []);
 
   async function login(email, senha) {
     const data = await api('/login', { method: 'POST', body: { email: email.trim(), senha } });
     configureSession(data.token, clearSession);
-    saveSession(data.token);
+    try { await persist(data.token); }
+    catch {
+      try { await api('/logout', { method: 'POST' }); } catch {}
+      await clearSession();
+      throw new Error('Não foi possível guardar a sessão com segurança. Tente novamente.');
+    }
     setUsuario(data.usuario);
   }
 
   async function logout() {
     await api('/logout', { method: 'POST' });
-    clearSession();
+    await clearSession();
   }
 
-  return <AuthContext.Provider value={{ usuario, isAdmin: usuario?.is_admin === true, loading, login, logout }}>
+  return <AuthContext.Provider value={{ usuario, isAdmin: usuario?.is_admin === true, loading, login, logout, clearSession }}>
     {children}
   </AuthContext.Provider>;
 }
-
-export function useAuth() {
-  return useContext(AuthContext);
-}
+export function useAuth() { return useContext(AuthContext); }

@@ -3,7 +3,9 @@
 namespace App\Console\Commands;
 
 use App\Models\Usuario;
+use App\Services\Senhas;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
 
 class CriarAdministrador extends Command
@@ -17,7 +19,7 @@ class CriarAdministrador extends Command
         $dados = [
             'nome' => $this->ask('Nome'),
             'email' => $this->ask('Email'),
-            'senha' => $this->secret('Senha (mínimo de 6 caracteres)'),
+            'senha' => $this->secret('Senha (12 a 72 caracteres, letras e números)'),
             'data_nascimento' => $this->ask('Data de nascimento (AAAA-MM-DD)'),
             'cpf' => $this->ask('CPF (11 dígitos)'),
         ];
@@ -25,7 +27,7 @@ class CriarAdministrador extends Command
         $validador = Validator::make($dados, [
             'nome' => 'required|string|max:255',
             'email' => 'required|string|email|max:255|unique:usuario,email',
-            'senha' => 'required|string|min:6',
+            'senha' => ['required', 'string', ...Senhas::regras()],
             'data_nascimento' => 'required|date_format:Y-m-d|before_or_equal:today',
             'cpf' => 'required|string|digits:11',
         ]);
@@ -38,7 +40,7 @@ class CriarAdministrador extends Command
             return self::FAILURE;
         }
 
-        $dados['senha'] = md5($dados['senha']);
+        $dados['senha'] = Hash::make($dados['senha']);
         $usuario = new Usuario($dados);
         $usuario->is_admin = true;
         $usuario->save();

@@ -3,9 +3,13 @@
 namespace App\Http\Controllers;
 
 use App\Models\EquipamentosModel;
+use App\Models\VinculoModel;
+use App\Services\Emprestimos;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class EquipamentosController extends Controller
 {
@@ -23,15 +27,25 @@ class EquipamentosController extends Controller
 
     public function atualizar_equipamento(Request $request, int $id): JsonResponse
     {
-        $equipamento = EquipamentosModel::findOrFail($id);
-        $equipamento->update($request->validate($this->regras($equipamento)));
+        DB::transaction(function () use ($request, $id) {
+            $equipamento = EquipamentosModel::lockForUpdate()->findOrFail($id);
+            $equipamento->update($request->validate($this->regras($equipamento)));
+        });
 
         return response()->json(['erro' => 'n', 'mensagem' => 'Equipamento atualizado com sucesso']);
     }
 
     public function deletar_equipamento(int $id): JsonResponse
     {
-        EquipamentosModel::findOrFail($id)->delete();
+        DB::transaction(function () use ($id) {
+            $equipamento = EquipamentosModel::lockForUpdate()->findOrFail($id);
+            if ($equipamento->id_usuario !== null || VinculoModel::where('equipamento_ativo_id', $id)->exists()) {
+                throw ValidationException::withMessages(['equipamento' => 'Registre a devolução antes de excluir o equipamento.']);
+            }
+            $equipamento->dispositivo_token_hash = null;
+            $equipamento->save();
+            $equipamento->delete();
+        });
 
         return response()->json(['erro' => 'n', 'mensagem' => 'Equipamento deletado com sucesso']);
     }
@@ -39,12 +53,12 @@ class EquipamentosController extends Controller
     public function vincular_equipamento_usuario(Request $request): JsonResponse
     {
         $dados = $request->validate([
-            'id_usuario' => 'required|integer|exists:usuario,id',
-            'id_equipamento' => 'required|integer|exists:equipamentos,id',
+            'id_usuario' => ['required', 'integer', Rule::exists('usuario', 'id')->whereNull('deleted_at')],
+            'id_equipamento' => ['required', 'integer', Rule::exists('equipamentos', 'id')->whereNull('deleted_at')],
+            'previsto_para' => 'required|date_format:Y-m-d|after_or_equal:today',
+            'substituir_usuario_id' => 'nullable|integer',
         ]);
-        $equipamento = EquipamentosModel::findOrFail($dados['id_equipamento']);
-        $equipamento->id_usuario = $dados['id_usuario'];
-        $equipamento->save();
+        app(Emprestimos::class)->retirar($dados, $request->user());
 
         return response()->json(['erro' => 'n', 'mensagem' => 'Equipamento vinculado ao usuário com sucesso']);
     }
@@ -54,9 +68,7 @@ class EquipamentosController extends Controller
         $dados = $request->validate([
             'id_equipamento' => 'required|integer|exists:equipamentos,id',
         ]);
-        $equipamento = EquipamentosModel::findOrFail($dados['id_equipamento']);
-        $equipamento->id_usuario = null;
-        $equipamento->save();
+        app(Emprestimos::class)->devolver($dados['id_equipamento'], $request->user());
 
         return response()->json(['erro' => 'n', 'mensagem' => 'Equipamento desvinculado do usuário com sucesso']);
     }
@@ -83,7 +95,7 @@ class EquipamentosController extends Controller
 
     public function listar_equipamentos_disponiveis(): JsonResponse
     {
-        return response()->json(EquipamentosModel::whereNull('id_usuario')->get());
+        return response()->json(EquipamentosModel::whereNull('id_usuario')->where('status', 'Disponível')->get());
     }
 
     /** @return array<string, mixed> */
@@ -100,7 +112,7 @@ class EquipamentosController extends Controller
             'categoria' => 'required|string|max:255',
             'numero_serie' => ['required', 'string', 'max:255', $numeroSerie],
             'data_aquisicao' => 'required|date_format:Y-m-d',
-            'status' => 'required|string|max:255',
+            'status' => ['required', Rule::in($equipamento && $equipamento->id_usuario !== null ? ['Em uso'] : ['Disponível', 'Manutenção'])],
         ];
     }
 }

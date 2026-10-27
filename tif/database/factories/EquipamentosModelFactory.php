@@ -18,7 +18,7 @@ class EquipamentosModelFactory extends Factory
             'numero_serie' => fake()->unique()->uuid(),
             'data_aquisicao' => '2026-01-01',
             'categoria' => 'Computador',
-            'status' => 'ativo',
+            'status' => 'Disponível',
         ];
     }
 }
